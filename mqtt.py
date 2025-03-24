@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # mqtt.py
 #
-# Main script to connect ZenInterface with MQTT/Home Assistant.
-# Includes the TPI handshake (via ZenInterface) and a polling thread.
+# Main script bridging ZenInterface with Home Assistant via MQTT.
+# Includes TPI advanced handshake & subscription from old code, plus polling.
 
 import yaml
 import time
@@ -19,8 +19,6 @@ def load_config(filename="config.yaml"):
         return yaml.safe_load(f)
 
 class ZenMQTTBridge:
-    """Bridges ZenInterface with Home Assistant via MQTT, plus polling."""
-
     def __init__(self, config):
         self.config = config
         self.mqtt_host = config["mqtt"]["host"]
@@ -32,11 +30,9 @@ class ZenMQTTBridge:
         self.controllers = config["controllers"]
         self.poll_interval = config.get("poll_interval", 10)
 
-        # We'll hold a ZenInterface for each controller
         self.interfaces = []
 
-        # MQTT client
-        # Deprecation note: this uses the older callback style
+        # NOTE: This uses MQTT callback API v1 (deprecated but still works).
         self.mqtt_client = mqtt.Client()
         if self.mqtt_user and self.mqtt_pass:
             self.mqtt_client.username_pw_set(self.mqtt_user, self.mqtt_pass)
@@ -48,7 +44,6 @@ class ZenMQTTBridge:
         self.stop_polling = threading.Event()
 
     def setup_controllers(self):
-        """Initialize ZenInterface for each controller in config."""
         for ctrl in self.controllers:
             host = ctrl["host"]
             port = ctrl["port"]
@@ -57,11 +52,11 @@ class ZenMQTTBridge:
 
             print(Fore.GREEN + f"Setting up ZenInterface for {name} ({host}:{port})" + Style.RESET_ALL)
             interface = ZenInterface(host, port, mac=mac, debug=False)
+            # We can do an initial refresh
             interface.refresh_all_devices()
             self.interfaces.append(interface)
 
     def start_mqtt(self):
-        """Connect to MQTT and start loop."""
         print(Fore.GREEN + f"Connecting to MQTT {self.mqtt_host}:{self.mqtt_port}" + Style.RESET_ALL)
         self.mqtt_client.connect(self.mqtt_host, self.mqtt_port, self.keepalive)
         self.mqtt_client.loop_start()
@@ -73,11 +68,9 @@ class ZenMQTTBridge:
             print(Fore.RED + f"[MQTT] Connection failed. RC={rc}" + Style.RESET_ALL)
 
     def on_message(self, client, userdata, msg):
-        """Handle incoming MQTT messages if needed."""
         pass
 
     def publish_light_state(self, interface, light_id):
-        """Publish a single light's state to MQTT."""
         state = interface.get_light_state(light_id)
         if state is None:
             return
@@ -86,12 +79,9 @@ class ZenMQTTBridge:
         print(Fore.YELLOW + f"[MQTT] Published {state} for light {light_id}" + Style.RESET_ALL)
 
     def poll_loop(self, interface):
-        """Periodically poll each known light for updated state."""
+        """Periodically refresh devices and publish states."""
         while not self.stop_polling.is_set():
-            # Refresh all devices or individually query known lights
             interface.refresh_all_devices()
-
-            # Give TPI time to respond
             time.sleep(1)
 
             # Publish each known light's state
@@ -101,20 +91,17 @@ class ZenMQTTBridge:
             time.sleep(self.poll_interval)
 
     def start_polling_threads(self):
-        """Create a polling thread for each ZenInterface."""
         for interface in self.interfaces:
             t = threading.Thread(target=self.poll_loop, args=(interface,), daemon=True)
             t.start()
             self.poll_threads.append(t)
 
     def stop_polling_threads(self):
-        """Signal all polling threads to stop."""
         self.stop_polling.set()
         for t in self.poll_threads:
             t.join()
 
     def run(self):
-        """Main entry point."""
         self.setup_controllers()
         self.start_mqtt()
         self.start_polling_threads()
