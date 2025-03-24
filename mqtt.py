@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # mqtt.py
 #
-# Main script to connect ZenInterface with MQTT (Home Assistant).
-# Now includes a polling thread for periodic state refresh.
+# Main script to connect ZenInterface with MQTT/Home Assistant.
+# Includes the TPI handshake (via ZenInterface) and a polling thread.
 
 import yaml
 import time
@@ -19,7 +19,7 @@ def load_config(filename="config.yaml"):
         return yaml.safe_load(f)
 
 class ZenMQTTBridge:
-    """Bridges ZenInterface with Home Assistant via MQTT."""
+    """Bridges ZenInterface with Home Assistant via MQTT, plus polling."""
 
     def __init__(self, config):
         self.config = config
@@ -32,10 +32,11 @@ class ZenMQTTBridge:
         self.controllers = config["controllers"]
         self.poll_interval = config.get("poll_interval", 10)
 
-        # We'll hold a ZenInterface object for each controller
+        # We'll hold a ZenInterface for each controller
         self.interfaces = []
 
         # MQTT client
+        # Deprecation note: this uses the older callback style
         self.mqtt_client = mqtt.Client()
         if self.mqtt_user and self.mqtt_pass:
             self.mqtt_client.username_pw_set(self.mqtt_user, self.mqtt_pass)
@@ -43,27 +44,24 @@ class ZenMQTTBridge:
         self.mqtt_client.on_connect = self.on_connect
         self.mqtt_client.on_message = self.on_message
 
-        # Polling thread references
         self.poll_threads = []
         self.stop_polling = threading.Event()
 
     def setup_controllers(self):
-        """Initialize ZenInterface objects for each controller in config."""
+        """Initialize ZenInterface for each controller in config."""
         for ctrl in self.controllers:
             host = ctrl["host"]
             port = ctrl["port"]
             mac = ctrl.get("mac", None)
             name = ctrl.get("name", f"{host}:{port}")
-            print(Fore.GREEN + f"Setting up ZenInterface for {name} ({host}:{port})" + Style.RESET_ALL)
 
-            # Create ZenInterface
+            print(Fore.GREEN + f"Setting up ZenInterface for {name} ({host}:{port})" + Style.RESET_ALL)
             interface = ZenInterface(host, port, mac=mac, debug=False)
-            # Example: refresh all devices
             interface.refresh_all_devices()
             self.interfaces.append(interface)
 
     def start_mqtt(self):
-        """Connect to the MQTT broker and start loop."""
+        """Connect to MQTT and start loop."""
         print(Fore.GREEN + f"Connecting to MQTT {self.mqtt_host}:{self.mqtt_port}" + Style.RESET_ALL)
         self.mqtt_client.connect(self.mqtt_host, self.mqtt_port, self.keepalive)
         self.mqtt_client.loop_start()
@@ -74,12 +72,8 @@ class ZenMQTTBridge:
         else:
             print(Fore.RED + f"[MQTT] Connection failed. RC={rc}" + Style.RESET_ALL)
 
-        # Example: subscribe to some topics if needed
-        # client.subscribe("some/topic/#")
-
     def on_message(self, client, userdata, msg):
-        """Handle incoming MQTT messages."""
-        # Typically parse messages to control lights, etc.
+        """Handle incoming MQTT messages if needed."""
         pass
 
     def publish_light_state(self, interface, light_id):
@@ -92,25 +86,22 @@ class ZenMQTTBridge:
         print(Fore.YELLOW + f"[MQTT] Published {state} for light {light_id}" + Style.RESET_ALL)
 
     def poll_loop(self, interface):
-        """Loop that periodically polls the ZenInterface for updated states."""
+        """Periodically poll each known light for updated state."""
         while not self.stop_polling.is_set():
-            # Example: for each known light in interface.lights, request an update
-            for light_id in interface.lights.keys():
-                interface.update_light_state(light_id)
-                time.sleep(0.1)  # small delay between queries
+            # Refresh all devices or individually query known lights
+            interface.refresh_all_devices()
 
-            # Give TPI some time to respond
-            time.sleep(1.0)
+            # Give TPI time to respond
+            time.sleep(1)
 
-            # Now publish each known light's state
+            # Publish each known light's state
             for light_id in list(interface.lights.keys()):
                 self.publish_light_state(interface, light_id)
 
-            # Wait poll_interval before next cycle
             time.sleep(self.poll_interval)
 
-    def start_polling_thread(self):
-        """Create and start a thread for each ZenInterface to poll device states."""
+    def start_polling_threads(self):
+        """Create a polling thread for each ZenInterface."""
         for interface in self.interfaces:
             t = threading.Thread(target=self.poll_loop, args=(interface,), daemon=True)
             t.start()
@@ -123,10 +114,10 @@ class ZenMQTTBridge:
             t.join()
 
     def run(self):
-        """Main entry to set up everything and run indefinitely."""
+        """Main entry point."""
         self.setup_controllers()
         self.start_mqtt()
-        self.start_polling_thread()
+        self.start_polling_threads()
 
         try:
             while True:
