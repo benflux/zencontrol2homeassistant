@@ -9,7 +9,7 @@ mqtt:
 
 # IP addresses and ports for your three Zencontrol controllers
 # (as you mentioned previously: 192.168.1.150, .193, .212 on port 5108)
-controllers:
+zencontrol:
   - name: zen1
     mac: 7C:BA:CC:22:E3:4F
     host: 192.168.1.150
