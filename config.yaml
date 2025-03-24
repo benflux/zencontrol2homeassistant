@@ -27,3 +27,5 @@ zencontrol:
     mac: 7C:BA:CC:22:E3:8D
     host: 192.168.1.212
     port: 5108
+
+polling_interval: 10
