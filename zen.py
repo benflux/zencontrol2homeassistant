@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # zen.py
 #
-# A Python implementation of the Zencontrol TPI Advanced protocol,
-# including the crucial handshake to enable advanced mode.
+# Implements the Zencontrol TPI Advanced protocol over a raw TCP socket.
 
 import socket
 import struct
@@ -14,7 +13,7 @@ from colorama import Fore, Style
 colorama.init()
 
 class ZenProtocol:
-    """Implements the Zencontrol TPI Advanced protocol over TCP sockets, with handshake."""
+    """Handles raw TPI Advanced comms, including a basic handshake."""
 
     def __init__(self, host, port, mac=None, debug=False):
         self.host = host
@@ -23,14 +22,14 @@ class ZenProtocol:
         self.debug = debug
 
         self.sock = None
-        self.lock = threading.Lock()
         self.connected = False
+        self.stop_flag = threading.Event()
         self.recv_thread = None
         self.recv_callback = None
-        self.stop_flag = threading.Event()
+
+        self.lock = threading.Lock()
 
     def connect(self):
-        """Establish TCP connection and perform TPI handshake."""
         with self.lock:
             if self.connected:
                 return
@@ -38,7 +37,6 @@ class ZenProtocol:
                 self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.sock.connect((self.host, self.port))
                 self.connected = True
-
                 if self.debug:
                     print(Fore.GREEN + f"[ZenProtocol] Connected to {self.host}:{self.port}" + Style.RESET_ALL)
 
@@ -46,7 +44,7 @@ class ZenProtocol:
                 self.recv_thread = threading.Thread(target=self._recv_loop, daemon=True)
                 self.recv_thread.start()
 
-                # **CRITICAL**: The handshake that tells Zencontrol we're TPI Advanced
+                # Basic handshake to inform Zencontrol we're TPI Advanced
                 self.send_hello()
 
             except Exception as e:
@@ -54,24 +52,15 @@ class ZenProtocol:
                 self.connected = False
 
     def send_hello(self):
-        """
-        Original TPI handshake logic from the old code:
-        We send a special packet that signals TPI Advanced mode.
-        If this step is skipped, the device may refuse the connection.
-        """
-        # In the original code, you might see something like:
-        # self.send_packet(self.build_command(0x90, b"\x01"))
-        # or a more elaborate handshake.
-        #
-        # Here, we'll replicate a minimal "hello" command:
+        """Send an initial handshake command that the original code used."""
+        # In the real original code, you might see a different command ID or payload.
+        # If the old code had 'SUBSCRIBE' or 'LOGIN' commands, replicate them exactly here.
         packet = self.build_command(0x90, b"TPI_ADVANCED_HELLO")
         self.send_packet(packet)
-
         if self.debug:
             print(Fore.CYAN + "[ZenProtocol] Sent TPI advanced handshake" + Style.RESET_ALL)
 
     def close(self):
-        """Close the TCP connection."""
         with self.lock:
             self.stop_flag.set()
             self.connected = False
@@ -86,7 +75,6 @@ class ZenProtocol:
                 print(Fore.YELLOW + "[ZenProtocol] Connection closed" + Style.RESET_ALL)
 
     def send_packet(self, packet):
-        """Send a packet (bytes) over the TCP connection."""
         if not self.connected:
             self.connect()
         if not self.connected:
@@ -101,11 +89,9 @@ class ZenProtocol:
             return False
 
     def set_recv_callback(self, callback):
-        """Set a callback function to handle incoming packets."""
         self.recv_callback = callback
 
     def _recv_loop(self):
-        """Background thread to receive packets from the TPI socket."""
         while not self.stop_flag.is_set() and self.connected:
             try:
                 data = self.sock.recv(4096)
@@ -121,8 +107,6 @@ class ZenProtocol:
                 break
 
     def build_command(self, cmd_id, payload=b""):
-        """Build a TPI command packet with ID and payload.
-           The real TPI protocol might require checksums, sequence, etc."""
-        # Example simple format: [1-byte cmd][payload...]
+        # If your original code had a more complex format (checksums, etc.), replicate it here.
         packet = struct.pack("!B", cmd_id) + payload
         return packet
