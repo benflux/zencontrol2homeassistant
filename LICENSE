@@ -1,0 +1,9 @@
+---
+
+## 4. `requirements.txt`
+
+```text
+paho-mqtt
+requests
+PyYAML
+colorama
