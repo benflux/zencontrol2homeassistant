@@ -1,0 +1,27 @@
+# MQTT connection details
+mqtt:
+  host: 192.168.1.251
+  port: 1883
+  user: zencontrol
+  password: controlzen
+  keepalive: 60
+  discovery_prefix: homeassistant
+
+# IP addresses and ports for your three Zencontrol controllers
+# (as you mentioned previously: 192.168.1.150, .193, .212 on port 5108)
+controllers:
+  - name: zen1
+    mac: 7C:BA:CC:22:E3:4F
+    host: 192.168.1.150
+    port: 5108
+  - name: zen2
+    mac: 7C:BA:CC:22:E3:7A
+    host: 192.168.1.193
+    port: 5108
+  - name: zen3
+    mac: 7C:BA:CC:22:E3:8D
+    host: 192.168.1.212
+    port: 5108
+
+# How often (in seconds) to poll all devices for updated state
+poll_interval: 10
